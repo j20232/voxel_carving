@@ -6,7 +6,7 @@ ROOT_PATH = Path(".").resolve()
 
 
 def get_bunny_mesh():
-    bunny_path = ROOT_PATH / "assets" / "bunny.ply"
+    bunny_path = ROOT_PATH / "assets" / "unchan_pink.obj"
     mesh = o3d.io.read_triangle_mesh(str(bunny_path))
     mesh.compute_vertex_normals()
     return mesh
@@ -18,9 +18,10 @@ if __name__ == '__main__':
     # Fit to unit cube
     mesh.scale(1 / np.max(mesh.get_max_bound() -
                           mesh.get_min_bound()), center=mesh.get_center())
-    o3d.visualization.draw_geometries([mesh], width=800, height=600)
+    pcd = mesh.sample_points_poisson_disk(2000)
+    o3d.visualization.draw_geometries([pcd], width=800, height=600)
 
     # Voxelization
-    voxel_grid = o3d.geometry.VoxelGrid.create_from_triangle_mesh(mesh,
-                                                                  voxel_size=0.05)
+    voxel_grid = o3d.geometry.VoxelGrid.create_from_point_cloud(
+        pcd, voxel_size=0.05)
     o3d.visualization.draw_geometries([voxel_grid], width=800, height=600)
