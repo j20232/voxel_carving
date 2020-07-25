@@ -16,8 +16,7 @@ if __name__ == '__main__':
     mesh = get_bunny_mesh()
 
     # Fit to unit cube
-    mesh.scale(1 / np.max(mesh.get_max_bound() -
-                          mesh.get_min_bound()), center=mesh.get_center())
+    mesh.scale(1 / np.max(mesh.get_max_bound() - mesh.get_min_bound()), center=mesh.get_center())
     o3d.visualization.draw_geometries([mesh], width=800, height=600)
 
     # Voxelization
