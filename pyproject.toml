@@ -8,6 +8,9 @@ authors = ["mocobt <mocobt@gmail.com>"]
 python = "^3.8"
 matplotlib = "^3.3.0"
 open3d = "^0.10.0"
+pathlib = "^1.0.1"
+numpy = "^1.19.1"
+scipy = "^1.5.2"
 
 [tool.poetry.dev-dependencies]
 autopep8 = "^1.5.3"
