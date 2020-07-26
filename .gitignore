@@ -4,6 +4,8 @@
 
 .vscode/
 
+out/*.ply
+
 
 __pycache__/
 *.py[cod]

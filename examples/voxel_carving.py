@@ -43,38 +43,67 @@ def get_extrinsic(xyz):
     return trans
 
 
-def preprocess(model):
-    # normalize mesh or point cloud
-    min_bound = model.get_min_bound()
-    max_bound = model.get_max_bound()
-    center = min_bound + (max_bound - min_bound) / 2.0
-    vertices = np.array(model.vertices)
-    vertices -= center
-    scale = np.linalg.norm(max_bound - min_bound) / 2.0
-    model.vertices = o3d.utility.Vector3dVector(vertices / scale)
-    return model
+class VoxelCarving():
+    def __init__(self, camera_path: str, cubic_size: int, voxel_resolution: int):
+        camera_pos = o3d.io.read_triangle_mesh(camera_path)
+        self.camera_pos = self._normalize_geometry(camera_pos)
+        # o3d.visualization.draw_geometries([camera_pos, mesh], width=800, height=600)
 
+        # Create dense voxel grid
+        self.voxel_grid = o3d.geometry.VoxelGrid.create_dense(
+            width=cubic_size,
+            height=cubic_size,
+            depth=cubic_size,
+            voxel_size=cubic_size / voxel_resolution,
+            origin=[-cubic_size / 2.0, -cubic_size / 2.0, -cubic_size / 2.0]
+        )
+        self.cubic_size = cubic_size
+        self.voxel_resolution = voxel_resolution
+        # o3d.visualization.draw_geometries([voxel_grid], width=800, height=600, mesh_show_wireframe=True)
 
-def voxel_carving(mesh, output_filename, camera_path, cubic_size, voxel_resolution,
-                  w=300, h=300, use_depth=True, surface_method="point_cloud"):
-    # normalize the input geometry and camera positions
-    mesh.compute_vertex_normals()
-    mesh = preprocess(mesh)
-    camera_sphere = o3d.io.read_triangle_mesh(camera_path)
-    camera_sphere = preprocess(camera_sphere)
-    # o3d.visualization.draw_geometries([camera_sphere, mesh], width=800, height=600)
+    def _normalize_geometry(self, geo: o3d.geometry.TriangleMesh):
+        min_bound = geo.get_min_bound()
+        max_bound = geo.get_max_bound()
+        center = min_bound + (max_bound - min_bound) / 2.0
+        vertices = np.array(geo.vertices)
+        vertices -= center
+        scale = np.linalg.norm(max_bound - min_bound) / 2.0
+        geo.vertices = o3d.utility.Vector3dVector(vertices / scale)
+        return geo
 
-    # Create dense voxel grid
-    voxel_grid = o3d.geometry.VoxelGrid.create_dense(
-        width=cubic_size,
-        height=cubic_size,
-        depth=cubic_size,
-        voxel_size=cubic_size / voxel_resolution,
-        origin=[-cubic_size / 2.0, -cubic_size / 2.0, -cubic_size / 2.0]
-    )
-    # o3d.visualization.draw_geometries([voxel_grid], width=800, height=600, mesh_show_wireframe=True)
+    def apply(self, mesh, w=300, h=300, out_geo=True):
+        mesh.compute_vertex_normals()
+        mesh = self._normalize_geometry(mesh)
 
-    return 0, 0, 0
+        # setup visualizer to render depth maps
+        vis = o3d.visualization.Visualizer()
+        vis.create_window(width=w, height=h, visible=False)
+        vis.add_geometry(mesh)
+        vis.get_render_option().mesh_show_back_face = True
+        ctr = vis.get_view_control()
+        # http://www.open3d.org/docs/release/python_api/open3d.visualization.ViewControl.html#open3d.visualization.ViewControl.convert_to_pinhole_camera_parameters
+        camera_param = ctr.convert_to_pinhole_camera_parameters()
+
+        center_pts = np.zeros((len(self.camera_pos.vertices), 3))
+        for cid, xyz in enumerate(self.camera_pos.vertices):
+            # Get new camera pose
+            trans = get_extrinsic(xyz)
+            camera_param.extrinsic = trans
+            c = np.linalg.inv(trans) @ np.array([0, 0, 0, 1]).transpose()
+            center_pts[cid, :] = c[:3]
+            ctr.convert_from_pinhole_camera_parameters(camera_param)
+
+            # Capture depth image and make a point cloud
+            vis.poll_events()
+            vis.update_renderer()
+            depth = vis.capture_depth_float_buffer(False)
+
+            # depth map carving method
+            self.voxel_grid.carve_depth_map(o3d.geometry.Image(depth), camera_param)
+            print("Carve view %03d/%03d" % (cid + 1, len(self.camera_pos.vertices)))
+            if out_geo:
+                o3d.io.write_voxel_grid(str(ROOT_PATH / "out" / "mesh_{:003}.ply".format(cid + 1)), self.voxel_grid)
+        vis.destroy_window()
 
 
 if __name__ == '__main__':
@@ -82,13 +111,8 @@ if __name__ == '__main__':
     output_filename = str(ROOT_PATH / "assets" / "voxelized.ply")
     camera_path = str(ROOT_PATH / "assets" / "sphere.ply")
     cubic_size = 2.0
-
     voxel_resolution = 128.0
-    # voxel_resolution = 32.0
 
-    voxel_grid, voxel_carving, voxel_surface = voxel_carving(mesh, output_filename, camera_path, cubic_size, voxel_resolution)
-
-    """
-    mesh.scale(1 / np.max(mesh.get_max_bound() - mesh.get_min_bound()), center=mesh.get_center())
-    o3d.visualization.draw_geometries([mesh], width=800, height=600)
-    """
+    voxel_carving = VoxelCarving(camera_path, cubic_size, voxel_resolution)
+    voxel_carving.apply(mesh)
+    o3d.visualization.draw_geometries([voxel_carving.voxel_grid], width=800, height=600)
