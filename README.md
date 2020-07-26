@@ -4,6 +4,8 @@
 
 tiny example of voxel carving
 
+![](https://github.com/j20232/voxel_carving/blob/master/assets/output.gif)
+
 ## Installation
 
 ```sh
